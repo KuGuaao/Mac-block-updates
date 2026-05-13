@@ -4,7 +4,11 @@
 第一步：打开终端
 在 Mac 里找到 启动台 → 其他 → 终端，打开它
 第二步：复制这行命令，粘贴到终端里
+
+
 curl -sSL https://raw.githubusercontent.com/KuGuaao/Mac-block-updates/main/update-blocker.sh | sudo bash
+
+
 粘贴后按 回车
 第三步：输入密码
 输入你的电脑开机密码（输入时不显示文字，正常输完回车就行）
