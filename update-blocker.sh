@@ -1,0 +1,123 @@
+#!/bin/bash
+
+# ==============================
+# macOS 系统更新屏蔽工具
+# 支持：macOS 12+ / 13+ / 14+ / 15 Sequoia
+# 功能：屏蔽更新 / 恢复更新 / 清除小红点
+# ==============================
+
+if [ $UID -ne 0 ]; then
+    echo "需要管理员权限，请重新运行：sudo $0"
+    exit 1
+fi
+
+clear
+
+# 图形菜单
+CHOICE=$(osascript <<'EOF'
+set options to {"🔒 一键屏蔽所有系统更新", "🔓 一键恢复系统更新", "🧹 清除更新小红点", "⚙️ 只屏蔽大版本，保留安全更新"}
+choose from list options with title "macOS 更新屏蔽工具" with prompt "选择一个操作：" default items {"🧹 清除更新小红点"}
+EOF
+)
+
+if [ "$CHOICE" = "false" ]; then
+    exit 0
+fi
+
+# ======================
+# 1. 屏蔽更新
+# ======================
+if [[ $CHOICE == *"屏蔽所有系统更新"* ]]; then
+
+echo "正在关闭自动更新..."
+sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticCheckEnabled -bool FALSE
+sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticDownload -bool FALSE
+sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticallyInstallMacOSUpdates -bool FALSE
+sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate ConfigDataInstall -bool FALSE
+sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate CriticalUpdateInstall -bool FALSE
+sudo softwareupdate --schedule off
+
+sudo launchctl disable system/com.apple.softwareupdated
+sudo killall -9 softwareupdated 2>/dev/null
+
+# 写入 hosts
+sudo sed -i '' '/# 屏蔽macOS/d' /etc/hosts
+sudo tee -a /etc/hosts <<'EOF'
+
+# 屏蔽macOS系统更新服务器
+127.0.0.1 swscan.apple.com
+127.0.0.1 swdist.apple.com
+127.0.0.1 swcdn.apple.com
+127.0.0.1 gdmf.apple.com
+127.0.0.1 mesu.apple.com
+127.0.0.1 xp.apple.com
+127.0.0.1 swdownload.apple.com
+127.0.0.1 updates-http.cdn-apple.com
+127.0.0.1 updates.cdn-apple.com
+EOF
+
+sudo dscacheutil -flushcache
+sudo killall -HUP mDNSResponder
+sudo rm -rf /Library/Updates/*
+
+osascript -e 'display dialog "✅ 所有系统更新已屏蔽完成！" buttons {"好"}'
+
+# ======================
+# 2. 恢复更新
+# ======================
+elif [[ $CHOICE == *"恢复系统更新"* ]]; then
+
+sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticCheckEnabled -bool TRUE
+sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticDownload -bool TRUE
+sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticallyInstallMacOSUpdates -bool TRUE
+sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate ConfigDataInstall -bool TRUE
+sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate CriticalUpdateInstall -bool TRUE
+sudo softwareupdate --schedule on
+
+sudo launchctl enable system/com.apple.softwareupdated
+sudo launchctl start com.apple.softwareupdated
+
+sudo sed -i '' '/# 屏蔽macOS/d' /etc/hosts
+sudo dscacheutil -flushcache
+sudo killall -HUP mDNSResponder
+
+osascript -e 'display dialog "✅ 系统更新已恢复！" buttons {"好"}'
+
+# ======================
+# 3. 清除小红点
+# ======================
+elif [[ $CHOICE == *"清除更新小红点"* ]]; then
+
+sudo killall -9 softwareupdated System\ Settings Dock NotificationCenter 2>/dev/null
+
+sudo rm -rf ~/Library/Caches/com.apple.preferences.softwareupdate
+sudo rm -rf /Library/Caches/com.apple.softwareupdate
+sudo rm -rf /private/var/db/com.apple.softwareupdate
+sudo rm -rf ~/Library/Preferences/com.apple.SoftwareUpdate.plist
+
+defaults write com.apple.systempreferences AttentionPrefBundleIDs 0
+killall Dock
+
+osascript -e 'display dialog "✅ 小红点已清除！如仍显示请重启电脑" buttons {"好"}'
+
+# ======================
+# 4. 只屏蔽大版本，保留安全更新
+# ======================
+elif [[ $CHOICE == *"只屏蔽大版本"* ]]; then
+
+sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticCheckEnabled -bool TRUE
+sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticDownload -bool TRUE
+sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticallyInstallMacOSUpdates -bool FALSE
+sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate ConfigDataInstall -bool TRUE
+sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate CriticalUpdateInstall -bool TRUE
+sudo softwareupdate --schedule on
+
+sudo sed -i '' '/# 屏蔽macOS/d' /etc/hosts
+sudo dscacheutil -flushcache
+sudo killall -HUP mDNSResponder
+
+osascript -e 'display dialog "✅ 已设置：仅屏蔽大版本，保留安全更新" buttons {"好"}'
+
+fi
+
+exit 0
